@@ -1,0 +1,12 @@
+# RAG시스템 구축을 위한 필수 라이브러리
+# 환경변수
+dotenv
+# 데이터 수집
+playwright
+# 데이터 정제 - nomalization, cleaning, chunking
+pandas
+numpy
+# 
+
+# 데이터 저장-postgres
+psycopg2-binary
