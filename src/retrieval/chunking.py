@@ -121,11 +121,29 @@ def _parse_hierarchy(text: str) -> list[tuple[str, list[str]]]:
     return groups
 
 
+def _has_final_consonant(word: str) -> bool:
+    """한글 마지막 글자에 받침이 있으면 True. 한글이 아니거나 받침 없으면 False."""
+    if not word:
+        return False
+    last = word[-1]
+    if not ("\uac00" <= last <= "\ud7a3"):
+        return False
+    # 한글: (초성*21*28 + 중성*28 + 종성) 에서 종성만 확인. (codepoint - 0xAC00) % 28 != 0 이면 받침 있음
+    return (ord(last) - 0xAC00) % 28 != 0
+
+
+def _josa(word: str, after_consonant: str, after_vowel: str) -> str:
+    """받침 있으면 after_consonant, 없으면 after_vowel 반환 (은/는, 이/가 등)."""
+    return after_consonant if _has_final_consonant(word) else after_vowel
+
+
 def _build_chunk_text(bracket_label: str, upper: str, lowers: list[str]) -> str:
-    """[bracket_label] -상위:하위1, 하위2 형식 생성"""
+    """[bracket_label] -상위:하위1, 하위2 형식 생성. 조사(은/는, 이/가)는 받침에 맞춤."""
+    eun_neun = _josa(bracket_label, "은", "는")   # 기술스택은 / 주요 업무는
+    i_ga = _josa(upper, "이", "가")               # ~이 있다 / ~가 있다
     if lowers:
-        return f"{bracket_label}에는 {upper}가 있다. 자세한 내용은 {', '.join(lowers)}이다."
-    return f"{bracket_label}는 {upper}"
+        return f"{bracket_label}에는 {upper}{i_ga} 있으며, 자세한 내용은 {', '.join(lowers)} 등이 있다."
+    return f"{bracket_label}{eun_neun} {upper}이다."
 
 
 def _chunk_skills(text: str) -> list[str]:

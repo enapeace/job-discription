@@ -328,7 +328,7 @@ Normalizing 결과는 Cleaning/Chunking 단계의 각 레코드에 `normalized` 
 
 ---
 
-# 4. 출력 예시
+# 출력 예시
 
 ## cleaning_YYYYMMDD_HHMM.json (1건)
 
@@ -373,7 +373,7 @@ Normalizing 결과는 Cleaning/Chunking 단계의 각 레코드에 `normalized` 
   "post_title": "[로봇/AI] 3D Vision Researcher (신입)",
   "chunk_type": "주요 업무",
   "chunk_id": "52895679_0",
-  "chunk_text": "[주요 업무] -3D Showroom 핵심 CV/3D Vision 문제 연구:이미지 기반 실내 공간 3D 재구성 품질 향상, SfM/MVS/NeRF/Gaussian Splatting 적용 및 개선",
+  "chunk_text": "주요 업무에는 3D Showroom 핵심 CV/3D Vision 문제 연구가 있으며, 자세한 내용으로는 이미지 기반 실내 공간 3D 재구성 품질 향상, SfM/MVS/NeRF/Gaussian Splatting 적용 및 개선 등이 있다.",
   "metadata_dlfjscompany": {
     "company_name": "세코어로보틱스",
     "company_url": "https://...",
@@ -389,20 +389,48 @@ Normalizing 결과는 Cleaning/Chunking 단계의 각 레코드에 `normalized` 
 
 ---
 
-# 5. 구현 순서
 
-| 단계 | 모듈 | 입력 | 출력 |
-|------|------|------|------|
-| 1 | Cleaning | `data/crawling/jobs_*.json` | `data/cleaning/cleaning_*.json` |
-| 2 | Normalizing | Cleaning 출력 | `normalized` 객체 추가 |
-| 3 | Chunking | `data/cleaning/cleaning_*.json` | `data/chunking/chunking_*.json` |
-| 4 | Embedding | chunk_text | - |
-| 5 | Load | embedding + metadata | Vector DB |
+# 5. EMBEDDING
 
+**입력**: `data/chunking/chunking_*.json` — 각 레코드의 `chunk_text`
+**출력**: 각 chunk에 `embedding` 벡터 추가 → Vector DB 적재
+
+## 5.1 모델
+
+| 항목 | 값 |
+|------|-----|
+| API | OpenAI API |
+| 모델 | `text-embedding-3-small` |
+| 차원 | 1536 |
+| 대상 필드 | `chunk_text` |
+
+## 5.2 처리 흐름
+
+```
+chunking_*.json
+     ↓
+chunk_text 추출
+     ↓
+OpenAI Embeddings API 호출 (text-embedding-3-small, 비동기방식으로 빠르게 처리)
+     ↓
+embedding 벡터 필드 포함한 JSON 출력 (data/embedding/embedding_*.json)
+```
+
+# 6. LOAD
+- postgreSQL 
+- table 2개
+  - 청킹테이블 : embedding_*.json 상위필드로 적재
+  - data테이블 : nomalizing_*.json 상위필드를 컬럼으로 적재
+
+# 7. AUGMENTED GENERATION
+- 사용자 질의로 백터검색. 그리고 top-10개 청크 데이터를 llm에게 넘겨주기
+- 사용자가 공고에 대해 물어보는 경우, 그리고 근거 데이터만으로 대답이 어려운 경우 job_post_id를 기준으로 두 테이블을 join하여 해당 공고 데이터를 제공하는 tool(sql검색기) 사용
+ 
+- openai 모델: gpt-4o-mini
 ---
 
-# 6. 참고 문서
+# 추후 개선점
 
-- `cleaning-nomalizeing-chunking.md` — 불릿 계층·청킹 원칙
-- `NORMALIZATION_PLAN.md` — (선택) 기술스택·시그널·경력·위치 정규화
-- `README_R_Retrieval.md` — Retrieval 파이프라인 개요
+- **청크 길이**: 지금 단계에서는 청크를 합치지 않고 두고, 검색/답 품질을 보면서 필요해지면 그때 합치는 쪽이 부담이 적다. 개선 시에는 “최소 길이(토큰/문자) 미만이면 다음 청크와 합치기” 같은 규칙을 도입하는 방안을 고려할 수 있다.
+
+- **LnagGraph**: “검색 → 요약 → 검증 → 재검색” 같은 다단계·분기·루프가 생기면 그때 LangGraph로 구현

@@ -1,0 +1,28 @@
+name: dj-project
+
+services:
+  db:
+    image: pgvector/pgvector:pg18
+    container_name: dj-project
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-dj-project}
+      POSTGRES_USER: ${POSTGRES_USER:-root}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root1234}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    # pg18+는 데이터를 /var/lib/postgresql 아래에 버전별로 저장 (기존 .../data 마운트 불가)
+    volumes:
+      - pgvector-data:/var/lib/postgresql
+
+    # 데이터베이스 상태 확인. 10초마다 1번씩 확인. 5초 이상 대기 후 실패하면 컨테이너 재시작.
+    # 이 헬스체크 없으면 컨테이너 시작 시 데이터베이스 준비 안된 상태로 시작될 수 있음.
+    healthcheck: 
+      test: ["CMD-SHELL", "pg_isready -d ${POSTGRES_DB:-dj-project} -U ${POSTGRES_USER:-root}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped # 컨테이너 종료 시 자동 재시작. 오류나 문제 발생 시 자동 복구.
+
+volumes:
+  pgvector-data:

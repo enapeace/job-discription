@@ -2,3 +2,7 @@
 
 .env
 .data/
+
+# 대용량 데이터 (GitHub 100MB 제한)
+data/embedding/
+data/chunking/

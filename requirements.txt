@@ -8,5 +8,7 @@ pandas
 numpy
 # 
 
+# 임베딩 / LLM
+openai
 # 데이터 저장-postgres
 psycopg2-binary

@@ -21,10 +21,6 @@ Generation 단계에서 사용할 Tool 함수들
 #    - 예: "신입" -> (0, 0)
 #    - 예: "1~3년" -> (1, 3)
 # 
-# 3. normalize_query_education(query: str) -> str
-#    - 사용자 질의의 학력 조건을 enum으로 변환
-#    - src/retrieval/nomalizing.py의 parse_education 함수 활용
-#    - 예: "대학교졸업" -> "BACHELOR"
 # 
 # 4. normalize_query_location(query: str) -> tuple[str, str, str]
 #    - 사용자 질의의 위치 조건을 파싱
