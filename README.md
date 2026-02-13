@@ -7,6 +7,37 @@
 
 ## 기획
 
+### 프로젝트 구조
+
+```
+job-discription/
+├── data/                      # 단계별 데이터
+│   ├── crawling/              # jobs_YYYYMMDD_HHMM.json
+│   ├── cleaning/              # cleaning_YYYYMMDD_HHMM.json
+│   ├── nomalizing/            # nomalizing_YYYYMMDD_HHMM.json
+│   ├── chunking/              # chunking_YYYYMMDD_HHMM.json
+│   └── embedding/             # embedding_YYYYMMDD_HHMM.jsonl
+├── docs/                      # PIPELINE_PLAN.md, README 등
+├── src/
+│   ├── db/                    # DB 인프라
+│   │   └── docker-compose.yml
+│   ├── etl/                   # ETL 파이프라인 (수집·정제·청킹·임베딩·적재)
+│   │   ├── crawling.py
+│   │   ├── cleaning.py
+│   │   ├── nomalizing.py
+│   │   ├── chunking.py
+│   │   ├── embedding.py
+│   │   └── load.py
+│   ├── retrieval/             # 검색 (질의 임베딩·벡터 검색)
+│   │   └── retriever.py
+│   └── generation/            # RAG + Tool calling
+│       ├── ask.py
+│       ├── llm.py
+│       └── tool.py
+├── requirements.txt
+└── .env
+```
+
 ### 목표
 
 점프잇(사람인) 채용 공고를 수집·정제·청킹·임베딩해 PostgreSQL(pgvector)에 적재하고, 사용자 질의에 대해 **RAG + Tool calling**으로 답변하는 파이프라인.
@@ -26,13 +57,13 @@
 
 | 필드 | 소스 | 예시 |
 |------|------|------|
-| `title` | - | "[AI] 3D Vision Researcher (신입)" |
-| `href` / `job_info_url` | - | "/position/52895679" / "https://jumpit.saramin.co.kr/position/52895679" |
-| `job_category` | - | "인공지능/머신러닝" |
-| `company_name`, `company_url`, `company_tags` | - | - |
-| `requirements` | - | 경력, 학력, 마감일, 근무지역 |
-| `job_description` | - | 기술스택, 주요업무, 자격요건, 우대사항, 복지 및 혜택, 채용절차 및 기타 지원 유의사항 |
-| `company_info` | - | 전체_직원수, 평균_연봉, 매출액, 영업이익 |
+| `title` | 점프잇 크롤링 | "[AI] 3D Vision Researcher (신입)" |
+| `href` / `job_info_url` | 점프잇 크롤링 | "/position/52895679" / "https://jumpit.saramin.co.kr/position/52895679" |
+| `job_category` | 점프잇 크롤링 | "인공지능/머신러닝" |
+| `company_name`, `company_url`, `company_tags` | 점프잇 크롤링 | 회사명, 회사 페이지 URL, ["태그1", "태그2"] |
+| `requirements` | 점프잇 크롤링 | 경력, 학력, 마감일, 근무지역 (키) |
+| `job_description` | 점프잇 크롤링 | 기술스택, 주요업무, 자격요건, 우대사항, 복지 및 혜택, 채용절차 및 기타 지원 유의사항 (키) |
+| `company_info` | 점프잇 크롤링 | 전체_직원수, 평균_연봉, 매출액, 영업이익 (키) |
 
 ---
 
@@ -412,7 +443,7 @@ Normalizing 결과는 Cleaning/Chunking 단계의 각 레코드에 `normalized` 
 **입력**: `data/chunking/chunking_*.json` — 각 레코드의 `chunk_text`
 **출력**: 각 chunk에 `embedding` 벡터 추가 → `data/embedding/embedding_*.jsonl` (또는 `.json`)
 
-**구현**: `src/retrieval/embedding.py`
+**구현**: `src/etl/embedding.py`
 
 ## 5.1 모델
 
@@ -444,7 +475,7 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 
 # 6. LOAD
 
-**구현**: `src/retrieval/load.py`
+**구현**: `src/etl/load.py`
 
 - **DB**: PostgreSQL + pgvector 확장
 - **환경변수**: `DATABASE_URL` 또는 `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`

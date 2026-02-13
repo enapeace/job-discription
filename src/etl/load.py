@@ -55,6 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_chunks_embedding
 
 
 def get_conn():
+    """환경변수로 PostgreSQL 연결을 만들고 반환한다."""
     url = os.environ.get("DATABASE_URL")
     if url:
         return psycopg2.connect(url)
@@ -68,6 +69,7 @@ def get_conn():
 
 
 def create_tables(conn) -> None:
+    """pgvector 확장 및 jobs, chunks 테이블이 없으면 생성한다."""
     with conn.cursor() as cur:
         cur.execute(DDL)
     conn.commit()
@@ -75,7 +77,7 @@ def create_tables(conn) -> None:
 
 
 def load_jobs(conn, nomalizing_path: Path) -> int:
-    """nomalizing_*.json → jobs 테이블 upsert"""
+    """정규화 JSON을 읽어 jobs 테이블에 넣거나(같은 job_post_id면) 갱신한다. 적재 건수를 반환한다."""
     with open(nomalizing_path, "r", encoding="utf-8") as f:
         jobs = json.load(f)
 
@@ -131,6 +133,7 @@ def load_jobs(conn, nomalizing_path: Path) -> int:
 
 
 def _chunk_record_to_row(c: dict) -> tuple | None:
+    """청크 dict 한 건을 DB insert용 행 튜플로 바꾼다. embedding이 없으면 None을 반환한다."""
     emb = c.get("embedding")
     if emb is None:
         return None
@@ -147,7 +150,7 @@ def _chunk_record_to_row(c: dict) -> tuple | None:
 
 
 def load_chunks(conn, embedding_path: Path) -> int:
-    """embedding_*.jsonl 또는 embedding_*.json(배열) → chunks 테이블 upsert"""
+    """임베딩 JSON/JSONL을 읽어 chunks 테이블에 넣거나(같은 chunk_id면) 갱신한다. 적재 건수를 반환한다."""
     rows = []
     with open(embedding_path, "r", encoding="utf-8") as f:
         peek = f.read(50).lstrip()
@@ -197,11 +200,12 @@ def run(
     nomalizing_path: str | Path,
 ) -> None:
     """
-    embedding_*.json + nomalizing_*.json → PostgreSQL 적재
+    테이블 생성 후 정규화·임베딩 파일을 DB에 적재한다.
+    (테이블 생성 → jobs 적재 → chunks 적재 순서로 실행)
 
     Args:
-        embedding_path: 임베딩 결과 JSON 경로
-        nomalizing_path: nomalizing 결과 JSON 경로
+        embedding_path: 임베딩 결과 JSON/JSONL 경로
+        nomalizing_path: 정규화 결과 JSON 경로
     """
     embedding_path = Path(embedding_path)
     nomalizing_path = Path(nomalizing_path)
