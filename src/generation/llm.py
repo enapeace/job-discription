@@ -16,10 +16,10 @@ from openai import OpenAI
 _src_dir = Path(__file__).resolve().parent.parent
 if str(_src_dir) not in sys.path:
     sys.path.insert(0, str(_src_dir))
+from db.conn import get_conn
 from retrieval.retriever import (
     DEFAULT_TOP_K,
     embed_query,
-    get_conn,
     vector_search,
 )
 from tool import (

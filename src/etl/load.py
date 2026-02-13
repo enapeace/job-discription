@@ -8,13 +8,20 @@ PIPELINE_PLAN.md 6. LOAD 스펙 구현
 환경변수: DATABASE_URL 또는 POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB
 """
 
-import json
-import os
+import sys
 from pathlib import Path
-from urllib.parse import quote_plus
+
+# 스크립트 단독 실행 시 src를 path에 넣어 db 패키지 import 가능하게 함
+_src_dir = Path(__file__).resolve().parent.parent
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
+import json
 
 import psycopg2
 from psycopg2.extras import execute_values
+
+from db.conn import get_conn
 
 # DDL: pgvector 확장 + 두 테이블 생성
 DDL = """
@@ -52,20 +59,6 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding
     ON chunks USING hnsw (embedding vector_cosine_ops);
 """
-
-
-def get_conn():
-    """환경변수로 PostgreSQL 연결을 만들고 반환한다."""
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        return psycopg2.connect(url)
-    user = os.environ.get("POSTGRES_USER", "root")
-    password = os.environ.get("POSTGRES_PASSWORD", "")
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    db = os.environ.get("POSTGRES_DB", "dj-project")
-    url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
-    return psycopg2.connect(url)
 
 
 def create_tables(conn) -> None:

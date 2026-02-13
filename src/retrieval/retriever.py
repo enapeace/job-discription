@@ -5,28 +5,13 @@ RETRIEVER - 쿼리 임베딩 및 벡터 검색
 """
 
 import json
-import os
-from urllib.parse import quote_plus
 
-import psycopg2
 from openai import OpenAI
+
+from db.conn import get_conn
 
 EMBEDDING_MODEL = "text-embedding-3-small"
 DEFAULT_TOP_K = 10
-
-
-def get_conn():
-    """PostgreSQL 연결 (DATABASE_URL 또는 POSTGRES_* 환경변수 사용)"""
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        return psycopg2.connect(url)
-    user = os.environ.get("POSTGRES_USER", "root")
-    password = os.environ.get("POSTGRES_PASSWORD", "")
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    db = os.environ.get("POSTGRES_DB", "dj-project")
-    url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
-    return psycopg2.connect(url)
 
 
 def embed_query(client: OpenAI, query: str, model: str = EMBEDDING_MODEL) -> list[float]:

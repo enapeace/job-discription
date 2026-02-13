@@ -19,7 +19,8 @@ job-discription/
 │   └── embedding/             # embedding_YYYYMMDD_HHMM.jsonl
 ├── docs/                      # PIPELINE_PLAN.md, README 등
 ├── src/
-│   ├── db/                    # DB 인프라
+│   ├── db/                    # DB 인프라·연결
+│   │   ├── conn.py            # PostgreSQL 연결 (get_conn)
 │   │   └── docker-compose.yml
 │   ├── etl/                   # ETL 파이프라인 (수집·정제·청킹·임베딩·적재)
 │   │   ├── crawling.py
