@@ -5,31 +5,20 @@
 
 ---
 
-## 전체 흐름
+## 기획
 
-```
-Crawling JSON
-     ↓
-┌─────────────────────────────────────────────────────────────┐
-│  1. CLEANING (노이즈 제거, 의미 보존)                          │
-│     - HTML 엔티티, 줄바꿈, 공백 정리                           │
-│     - ⚠ 불릿 계층(-/·) 절대 통일 금지                          │
-└─────────────────────────────────────────────────────────────┘
-     ↓
-┌─────────────────────────────────────────────────────────────┐
-│  2. NORMALIZING (구조화·표준화)                               │
-│     - 경력(원문·min·max), 위치(시/도·구군·상세) → normalized (7개 필드) │
-└─────────────────────────────────────────────────────────────┘
-     ↓
-┌─────────────────────────────────────────────────────────────┐
-│  3. CHUNKING (계층 고려 청킹)                                 │
-│     - 상위(-/■/1)) 기준 chunk, 하위(· 또는 -) 포함              │
-│     - 1) 스타일: 상위 1)/2)/…, 하위 - 로 표현되는 경우 지원     │
-│     - 임베딩용 chunk_text 생성                                 │
-└─────────────────────────────────────────────────────────────┘
-     ↓
-Embedding → Load
-```
+### 목표
+
+점프잇(사람인) 채용 공고를 수집·정제·청킹·임베딩해 PostgreSQL(pgvector)에 적재하고, 사용자 질의에 대해 **RAG + Tool calling**으로 답변하는 파이프라인.
+
+- **데이터**: 크롤링 → cleaning → nomalizing → chunking(상위·하위 유지) → embedding
+- **저장**: jobs / chunks 테이블 (pgvector HNSW 인덱스)
+- **서비스**: 질의 임베딩 → 벡터 검색 top_k → LLM(gpt-4o-mini)에 컨텍스트 + 필요 시 툴(get_job_detail, get_jobs_title_link, get_job_descriptions) 호출 → 한국어 답변
+
+### 실행 요약
+
+- **ETL**: 크롤링 → cleaning → nomalizing → chunking → embedding → load (각 단계 스크립트 실행)
+- **질의**: `uv run src/generation/ask.py` — 터미널에서 질문 입력 후 답변·사용 툴·검색 청크 로그 확인
 
 ---
 
@@ -38,7 +27,7 @@ Embedding → Load
 | 필드 | 소스 | 예시 |
 |------|------|------|
 | `title` | - | "[AI] 3D Vision Researcher (신입)" |
-| `href` / `job_info_url` | - | "/position/52895679" 또는 "https://jumpit.saramin.co.kr/position/52895679" |
+| `href` / `job_info_url` | - | "/position/52895679" / "https://jumpit.saramin.co.kr/position/52895679" |
 | `job_category` | - | "인공지능/머신러닝" |
 | `company_name`, `company_url`, `company_tags` | - | - |
 | `requirements` | - | 경력, 학력, 마감일, 근무지역 |
@@ -174,7 +163,7 @@ Embedding → Load
 - `experience_min_years=null`, `experience_max_years=null`
 
 
-## 3.2 위치 (필수)
+## 3.2 위치
 
 ### 목적
 - "마포구", "서울 서부권" 등 **지역 필터**
@@ -202,7 +191,7 @@ Embedding → Load
 - 예: `대전 유성구` → district=`유성구`
 - 예: `세종` → district=`""` (세종시는 구 단위 없음)
 
-#### Step 3: location_detail
+#### Step 3: location_detail›
 - 시/도, 구/시/군을 제외한 나머지 (도로명, 건물명, 호수 등)
 - 예: `디지털로285, 210호`, `선릉로525, 3층`
 
@@ -337,13 +326,13 @@ Normalizing 결과는 Cleaning/Chunking 단계의 각 레코드에 `normalized` 
   "job_post_id": "52895679",
   "job_category": "인공지능/머신러닝",
   "post_title": "[로봇/AI] 3D Vision Researcher (신입)",
-  "job_description": {
-    "기술스택": "C++, Python",
-    "주요업무": "...",
-    "자격요건": "...",
-    "우대사항": "...",
-    "채용절차 및 기타 지원 유의사항": "..."
-  },
+    "job_description": {
+      "기술스택": "C++, Python",
+      "주요업무": "1) 3D Showroom 핵심 CV/3D Vision 문제 연구\n- 이미지 기반 실내 공간에서의 3D 재구성 품질 향상 연구\n- SfM/MVS/NeRF/Gaussian Splatting 등 차세대 3D 표현/복원 기술 적용 및 개선\n- 공간의 구조적 일관성을 유지하는 geometry/texture optimization 연구\n\n2) 공간 이해(Spatial Understanding) 및 고수준 인식\n- 객체 인식·세그멘테이션(가구/문/창/계단/조명 등) 기반 쇼룸 자동 태깅\n\n3) 실사용 환경 Robust CV\n- 저조도, 반사(거울/유리), 반복 패턴, 단색 벽 등 Hard case 대응\n- 동적 객체(사람/반려동물) 제거 및 정적 공간 복원 기술 연구\n\n4) 연구 성과의 제품화(Productionization)\n- SLAM/3D 파이프라인과 결합해 실시간·후처리 하이브리드 구조 설계\n- 모바일/엣지 환경에서의 경량화 및 실시간 추론 최적화\n- 제품 팀과의 요구 정렬, PRD 리뷰, 릴리즈 성과 분석 및 반복 개선",
+      "자격요건": "1) Computer Vision / 3D Vision / ML 분야 연구 또는 실무 1년 이상 (이에 준하는 박사 연구 경력)\n2) CV/3D 핵심 주제 중 1개 이상 깊이 있는 경험\n- 3D Reconstruction / MVS / NeRF / Gaussian Splatting\n- Depth/Normal/Surface 추정\n- Semantic/Instance Segmentation\n- Indoor scene understanding / layout estimation\n3) PyTorch/TensorFlow 등 딥러닝 프레임워크 기반 연구 구현 능력\n4) 논문/오픈소스 리딩 및 재현·개선 능력\n5) 실험 설계→학습→평가→개선의 Research loop을 독립적으로 운용할 수 있는 역량\n6) 실제 서비스/제품 문제를 연구적 언어로 치환하고 현실 제약 속에서 해법을 찾는 능력/경험",
+      "우대사항": "1) 모바일/실환경에서의 3D CV 제품화 경험 (ARKit/ARCore, on-device inference)\n2) NeRF/3DGS 계열 최신 연구 경험 또는 논문 게재\n3) CVPR/ECCV/ICCV/NeurIPS/ICRA/IROS 등 Top-tier 논문 게재 경험\n4) 글로벌/대규모 데이터셋 구축 및 domain generalization 경험\n\n※ 우대사항은 필수 요건이 아닙니다.",
+      "코딩테스트 여부": "채용 절차에 코딩테스트 없음"
+    },
   "requirements": {
       "경력": "신입",
       "학력": "대학교졸업(4년) 이상",
@@ -387,13 +376,43 @@ Normalizing 결과는 Cleaning/Chunking 단계의 각 레코드에 `normalized` 
 }
 ```
 
+### 상위·하위 의미를 유지한 청킹 출력 예시
+
+위 cleaning 예시의 `job_description.주요업무`는 **1) ~ 4)** 상위와 **-** 하위로 계층이 나뉘어 있음. 청킹 시 **상위 하나 + 그 아래 하위 항목들**을 한 chunk로 묶어, `chunk_text`에 “상위가 있으며, 자세한 내용은 하위1, 하위2, … 등이 있다” 형식으로 넣음.
+
+**원문(주요업무 일부):**
+```
+1) 3D Showroom 핵심 CV/3D Vision 문제 연구
+- 이미지 기반 실내 공간에서의 3D 재구성 품질 향상 연구
+- SfM/MVS/NeRF/Gaussian Splatting 등 차세대 3D 표현/복원 기술 적용 및 개선
+- 공간의 구조적 일관성을 유지하는 geometry/texture optimization 연구
+
+2) 공간 이해(Spatial Understanding) 및 고수준 인식
+- 객체 인식·세그멘테이션(가구/문/창/계단/조명 등) 기반 쇼룸 자동 태깅
+```
+
+**청킹 결과(동일 공고에서 나온 chunk 일부):**
+
+| chunk_id   | chunk_type | chunk_text (상위·하위 유지) |
+|------------|------------|-----------------------------|
+| 52895679_1 | 기술스택   | 기술스택은 C++, Python이다. |
+| 52895679_2 | 주요 업무  | 주요 업무에는 3D Showroom 핵심 CV/3D Vision 문제 연구가 있으며, 자세한 내용은 이미지 기반 실내 공간에서의 3D 재구성 품질 향상 연구, SfM/MVS/NeRF/Gaussian Splatting 등 차세대 3D 표현/복원 기술 적용 및 개선, 공간의 구조적 일관성을 유지하는 geometry/texture optimization 연구 등이 있다. |
+| 52895679_3 | 주요 업무  | 주요 업무에는 공간 이해(Spatial Understanding) 및 고수준 인식이 있으며, 자세한 내용은 객체 인식·세그멘테이션(가구/문/창/계단/조명 등) 기반 쇼룸 자동 태깅 등이 있다. |
+| …          | 자격요건 / 우대사항 | 동일하게 **상위 기준 1 chunk**, 그 하위 항목들을 한 문장으로 이어서 저장 |
+
+- **상위**: `1)`, `2)` 또는 `-`, `■`로 시작하는 줄이 하나의 chunk 단위.
+- **하위**: 해당 상위 아래의 `-`(숫자 스타일일 때) 또는 `·` 항목들이 그 chunk의 “자세한 내용”으로 함께 포함됨.
+- 계층을 나누지 않고, 상위/하위를 한 덩어리로 유지해 검색·답변 시 문맥이 깨지지 않도록 함.
+
 ---
 
 
 # 5. EMBEDDING
 
 **입력**: `data/chunking/chunking_*.json` — 각 레코드의 `chunk_text`
-**출력**: 각 chunk에 `embedding` 벡터 추가 → Vector DB 적재
+**출력**: 각 chunk에 `embedding` 벡터 추가 → `data/embedding/embedding_*.jsonl` (또는 `.json`)
+
+**구현**: `src/retrieval/embedding.py`
 
 ## 5.1 모델
 
@@ -403,6 +422,7 @@ Normalizing 결과는 Cleaning/Chunking 단계의 각 레코드에 `normalized` 
 | 모델 | `text-embedding-3-small` |
 | 차원 | 1536 |
 | 대상 필드 | `chunk_text` |
+| 배치 크기 | 100 |
 
 ## 5.2 처리 흐름
 
@@ -411,22 +431,67 @@ chunking_*.json
      ↓
 chunk_text 추출
      ↓
-OpenAI Embeddings API 호출 (text-embedding-3-small, 비동기방식으로 빠르게 처리)
+OpenAI Embeddings API 호출 (text-embedding-3-small, 비동기 배치 처리)
      ↓
-embedding 벡터 필드 포함한 JSON 출력 (data/embedding/embedding_*.json)
+배치마다 즉시 JSONL 한 줄씩 기록 (중간 실패 시 그때까지 결과 보존)
+     ↓
+data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함)
 ```
 
+- JSON 배열 형식(`embedding_*.json`)으로 저장된 파일도 LOAD 단계에서 지원됨.
+
+---
+
 # 6. LOAD
-- postgreSQL 
-- table 2개
-  - 청킹테이블 : embedding_*.json 상위필드로 적재
-  - data테이블 : nomalizing_*.json 상위필드를 컬럼으로 적재
+
+**구현**: `src/retrieval/load.py`
+
+- **DB**: PostgreSQL + pgvector 확장
+- **환경변수**: `DATABASE_URL` 또는 `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`
+
+## 6.1 테이블
+
+| 테이블 | 입력 파일 | 설명 |
+|--------|-----------|------|
+| **jobs** | `data/nomalizing/nomalizing_*.json` | 공고 정규화 데이터. `job_post_id`, `post_title`, `job_post_url`, `requirements`, `job_description`, `company`, `experience_*`, `location_*` 등 |
+| **chunks** | `data/embedding/embedding_*.jsonl` 또는 `embedding_*.json` | 청크 + 임베딩. `chunk_id`, `chunk_type`, `chunk_text`, `embedding`(vector 1536), `job_post_id`, `job_category`, `post_title`, `job_post_url` |
+
+- chunks 테이블: `embedding` 컬럼에 HNSW 인덱스(코사인 유사도) 생성.
+
+---
 
 # 7. AUGMENTED GENERATION
-- 사용자 질의로 백터검색. 그리고 top-10개 청크 데이터를 llm에게 넘겨주기
-- 사용자가 공고에 대해 물어보는 경우, 그리고 근거 데이터만으로 대답이 어려운 경우 job_post_id를 기준으로 두 테이블을 join하여 해당 공고 데이터를 제공하는 tool(sql검색기) 사용
- 
-- openai 모델: gpt-4o-mini
+
+**구현**: `src/generation/llm.py`, `src/retrieval/retriever.py`, `src/generation/tool.py`, `src/generation/ask.py`
+
+## 7.1 흐름
+
+1. **검색(Retriever)**  
+   사용자 질의 → 쿼리 임베딩(`text-embedding-3-small`) → chunks 테이블 코사인 유사도 벡터 검색 → **top_k(기본 10)개 청크** 반환.
+2. **컨텍스트 구성**  
+   검색된 청크(공고ID, 제목, 청크 타입, chunk_text, 유사도)를 문자열로 이어 붙여 LLM 유저 메시지에 포함.
+3. **LLM 호출**  
+   OpenAI `gpt-4o-mini` + Tool calling. 필요 시 툴 호출 후 결과를 컨텍스트에 추가해 재호출.
+
+## 7.2 모델
+
+| 항목 | 값 |
+|------|-----|
+| LLM | OpenAI `gpt-4o-mini` |
+| 쿼리 임베딩 | `text-embedding-3-small` (retriever) |
+| top_k | 10 (기본) |
+
+## 7.3 Tools (SQL/DB 조회)
+
+| 툴 이름 | 용도 | 반환 |
+|---------|------|------|
+| **get_job_detail** | 특정 공고의 상세 정보(회사, 복지, 채용 절차, 경력, 근무지 등)가 필요할 때 | `job_post_id`, `post_title`, `job_post_url`, `company`, `requirements`, `job_description`, `hiring_process`, `experience_*`, `location_*` 등 |
+| **get_jobs_title_link** | 추천 공고를 제목·링크로 정리해 보여줄 때 | `job_post_id` 목록에 대한 `post_title`, `job_post_url` 목록 |
+| **get_job_descriptions** | 직무·업무·역할·담당업무 관련 질문에 답할 때 | 검색된 청크 공고 n개(기본 5, 최대 10)의 `job_description`(직무소개) |
+
+- LLM이 판단해 위 툴을 호출하며, 툴 결과를 참고해 최종 답변 생성.
+- 실행: `uv run src/generation/ask.py` — 터미널에서 질의 입력 후 RAG 답변·툴 호출 로그 확인 가능.
+
 ---
 
 # 추후 개선점

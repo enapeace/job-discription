@@ -2,116 +2,89 @@
 AUGMENTED GENERATION - RAG
 
 PIPELINE_PLAN.md 7. AUGMENTED GENERATION 스펙 구현
-- 사용자 질의 → 벡터 검색(top-10) → gpt-4o-mini → 응답
-- Tool: get_job_detail (job_post_id 기준 jobs + chunks join)
+- 사용자 질의 → retriever로 벡터 검색(top_k) → gpt-4o-mini → 응답
+- Tool: get_job_detail, get_jobs_title_link, get_job_descriptions
 """
 
 import json
-import os
-from urllib.parse import quote_plus
+import sys
+from pathlib import Path
 
-import psycopg2
 from openai import OpenAI
 
+# uv run src/generation/ask.py 실행 시 src가 패키지로 안 잡히므로 path 추가
+_src_dir = Path(__file__).resolve().parent.parent
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+from retrieval.retriever import (
+    DEFAULT_TOP_K,
+    embed_query,
+    get_conn,
+    vector_search,
+)
+from tool import (
+    get_job_detail,
+    get_job_descriptions,
+    get_jobs_title_link,
+    TOOL_GET_JOB_DETAIL,
+    TOOL_GET_JOB_DESCRIPTIONS,
+    TOOL_GET_JOBS_TITLE_LINK,
+)
+
 LLM_MODEL = "gpt-4o-mini"
-EMBEDDING_MODEL = "text-embedding-3-small"
-TOP_K = 10
-
-
-def _get_conn():
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        return psycopg2.connect(url)
-    user = os.environ.get("POSTGRES_USER", "root")
-    password = os.environ.get("POSTGRES_PASSWORD", "")
-    host = os.environ.get("POSTGRES_HOST", "localhost")
-    port = os.environ.get("POSTGRES_PORT", "5432")
-    db = os.environ.get("POSTGRES_DB", "dj-project")
-    url = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
-    return psycopg2.connect(url)
-
-
-def _embed_query(client: OpenAI, query: str) -> list[float]:
-    resp = client.embeddings.create(model=EMBEDDING_MODEL, input=query)
-    return resp.data[0].embedding
-
-
-def _vector_search(conn, embedding: list[float], top_k: int = TOP_K) -> list[dict]:
-    """코사인 유사도 벡터 검색 → top_k 청크 반환"""
-    sql = """
-        SELECT chunk_id, chunk_type, chunk_text,
-               job_post_id, job_category, post_title, job_post_url,
-               1 - (embedding <=> %s::vector) AS score
-        FROM chunks
-        ORDER BY embedding <=> %s::vector
-        LIMIT %s
-    """
-    emb_str = json.dumps(embedding)
-    with conn.cursor() as cur:
-        cur.execute(sql, (emb_str, emb_str, top_k))
-        rows = cur.fetchall()
-
-    cols = ["chunk_id", "chunk_type", "chunk_text",
-            "job_post_id", "job_category", "post_title", "job_post_url", "score"]
-    return [dict(zip(cols, row)) for row in rows]
-
-
-def _get_job_detail(conn, job_post_id: str) -> dict | None:
-    """job_post_id로 공고 전체 정보 조회"""
-    sql = """
-        SELECT job_post_id, job_category, post_title, job_post_url,
-               requirements, job_description, hiring_process, company,
-               experience_raw, experience_min_years, experience_max_years,
-               location_raw, location_city, location_district, location_detail
-        FROM jobs
-        WHERE job_post_id = %s
-    """
-    with conn.cursor() as cur:
-        cur.execute(sql, (job_post_id,))
-        row = cur.fetchone()
-
-    if row is None:
-        return None
-
-    cols = [
-        "job_post_id", "job_category", "post_title", "job_post_url",
-        "requirements", "job_description", "hiring_process", "company",
-        "experience_raw", "experience_min_years", "experience_max_years",
-        "location_raw", "location_city", "location_district", "location_detail",
-    ]
-    return dict(zip(cols, row))
+TOP_K = DEFAULT_TOP_K
 
 
 _TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_job_detail",
-            "description": (
-                "job_post_id로 채용 공고의 상세 정보를 가져옵니다. "
-                "검색 결과만으로 답변하기 어렵거나, 특정 공고의 복지·회사 정보·채용 절차 등 "
-                "상세 내용이 필요할 때 사용하세요."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "job_post_id": {
-                        "type": "string",
-                        "description": "조회할 채용 공고 ID (예: '52895679')",
-                    }
-                },
-                "required": ["job_post_id"],
-            },
-        },
-    }
+    TOOL_GET_JOB_DETAIL,
+    TOOL_GET_JOBS_TITLE_LINK,
+    TOOL_GET_JOB_DESCRIPTIONS,
 ]
 
 _SYSTEM_PROMPT = (
     "당신은 채용 공고 검색 도우미입니다.\n"
     "제공된 청크 데이터를 바탕으로 사용자 질문에 답하세요.\n"
+    "직무·업무·역할·담당업무 관련 질문이면 get_job_descriptions 툴로 해당 공고들의 직무소개(job_description)를 가져와 참고하며 답하세요.\n"
+    "추천 공고를 제목·링크로 정리해 보여줄 때는 get_jobs_title_link 툴을 사용하세요.\n"
     "특정 공고의 복지·회사 정보·채용 절차 등 상세 내용이 필요하면 get_job_detail 툴을 사용하세요.\n"
+    "필요하면 여러개의 tool을 사용할 수 있습니다."
     "답변은 한국어로 합니다."
 )
+
+
+def _log_llm_context(messages: list, call_index: int = 0):
+    """LLM에 들어가는 전체 컨텍스트(메시지 목록)를 로그로 출력"""
+    def _get(m, key, default=None):
+        if isinstance(m, dict):
+            return m.get(key, default)
+        return getattr(m, key, default)
+
+    sep = "=" * 60
+    print(f"\n[LLM 컨텍스트 로그] (API 호출 #{call_index + 1})\n{sep}")
+    for m in messages:
+        role = _get(m, "role", "?")
+        content = _get(m, "content") or "(없음)"
+        if role == "system":
+            print(f"\n--- role: system ---\n{content}\n")
+        elif role == "user":
+            print(f"\n--- role: user ---\n{content}\n")
+        elif role == "assistant":
+            part = content or ""
+            tool_calls = _get(m, "tool_calls") or []
+            if tool_calls:
+                tcs = []
+                for tc in tool_calls:
+                    fn = _get(tc, "function") or _get(tc, "function")
+                    if isinstance(fn, dict):
+                        tcs.append({"name": fn.get("name"), "arguments": fn.get("arguments", "")})
+                    else:
+                        tcs.append({"name": _get(fn, "name"), "arguments": _get(fn, "arguments", "")})
+                part += "\n[tool_calls] " + json.dumps(tcs, ensure_ascii=False)
+            print(f"\n--- role: assistant ---\n{part}\n")
+        elif role == "tool":
+            tid = _get(m, "tool_call_id") or ""
+            print(f"\n--- role: tool (id={str(tid)[:8]}...) ---\n{str(content)[:500]}{'...' if len(str(content)) > 500 else ''}\n")
+    print(sep + "\n")
 
 
 def generate(query: str, conn=None, return_chunks: bool = False):
@@ -121,22 +94,23 @@ def generate(query: str, conn=None, return_chunks: bool = False):
     Args:
         query: 사용자 질의 문자열
         conn: 기존 psycopg2 연결 (없으면 환경변수 DATABASE_URL로 생성)
-        return_chunks: True면 (응답문자열, 청크리스트) 반환
+        return_chunks: True면 (응답문자열, 청크리스트, 사용한 툴 이름 리스트) 반환
 
     Returns:
         return_chunks=False: LLM 응답 문자열
-        return_chunks=True: (LLM 응답 문자열, 검색된 청크 리스트)
+        return_chunks=True: (LLM 응답 문자열, 검색된 청크 리스트, 사용한 툴 이름 리스트)
     """
     client = OpenAI()
-    _conn = conn or _get_conn()
+    _conn = conn or get_conn()
     close_conn = conn is None
+    tools_used = []
 
     try:
-        # 1. 쿼리 임베딩
-        query_emb = _embed_query(client, query)
+        # 1. 쿼리 임베딩 (retriever)
+        query_emb = embed_query(client, query)
 
-        # 2. 벡터 검색 top-10
-        chunks = _vector_search(_conn, query_emb)
+        # 2. 벡터 검색 top_k (retriever)
+        chunks = vector_search(_conn, query_emb, top_k=TOP_K)
 
         # 3. 컨텍스트 구성
         context_parts = []
@@ -160,7 +134,9 @@ def generate(query: str, conn=None, return_chunks: bool = False):
             },
         ]
 
+        api_call_index = 0
         while True:
+            _log_llm_context(messages, api_call_index)
             response = client.chat.completions.create(
                 model=LLM_MODEL,
                 messages=messages,
@@ -169,40 +145,44 @@ def generate(query: str, conn=None, return_chunks: bool = False):
             )
             msg = response.choices[0].message
             messages.append(msg)
+            api_call_index += 1
 
             if not msg.tool_calls:
                 if return_chunks:
-                    return msg.content, chunks
+                    return msg.content, chunks, tools_used
                 return msg.content
 
+            tool_names = [tc.function.name for tc in msg.tool_calls]
+            tools_used.extend(tool_names)
+            print(f"[툴 호출] {', '.join(tool_names)}")
+
             for tool_call in msg.tool_calls:
+                args = json.loads(tool_call.function.arguments)
                 if tool_call.function.name == "get_job_detail":
-                    args = json.loads(tool_call.function.arguments)
-                    detail = _get_job_detail(_conn, args["job_post_id"])
+                    detail = get_job_detail(_conn, args["job_post_id"])
                     result = (
                         json.dumps(detail, ensure_ascii=False, default=str)
                         if detail
                         else "해당 공고를 찾을 수 없습니다."
                     )
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result,
-                    })
+                elif tool_call.function.name == "get_jobs_title_link":
+                    items = get_jobs_title_link(_conn, args.get("job_post_ids", []))
+                    result = json.dumps(items, ensure_ascii=False, default=str)
+                elif tool_call.function.name == "get_job_descriptions":
+                    n = args.get("n", 5)
+                    items = get_job_descriptions(
+                        _conn, args.get("job_post_ids", []), n=min(max(1, n), 10)
+                    )
+                    result = json.dumps(items, ensure_ascii=False, default=str)
+                else:
+                    result = "알 수 없는 툴입니다."
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result,
+                })
 
     finally:
         if close_conn:
             _conn.close()
 
-
-if __name__ == "__main__":
-    import sys
-
-    from dotenv import load_dotenv
-
-    load_dotenv()
-
-    query = sys.argv[1] if len(sys.argv) > 1 else "Python을 사용하는 AI 관련 신입 채용 공고 알려줘"
-    print(f"질의: {query}\n")
-    answer = generate(query)
-    print(f"답변:\n{answer}")

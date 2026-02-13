@@ -26,12 +26,17 @@ def main():
             break
 
         print()
-        answer, chunks = generate(query, return_chunks=True)
+        answer, chunks, tools_used = generate(query, return_chunks=True)
         print(f"[로그] 검색된 청크 수: {len(chunks)}개")
         for i, c in enumerate(chunks, 1):
             print(f"  [{i}] chunk_id={c['chunk_id']}")
             print(f"      chunk_text={c['chunk_text'][:80]}{'...' if len(c['chunk_text']) > 80 else ''}")
         print()
+        if tools_used:
+            print(f"[사용한 툴] {', '.join(tools_used)}")
+        else:
+            print("[사용한 툴] (없음)")
+        print(f"질문: {query}")
         print(f"답변:\n{answer}\n")
 
 
