@@ -526,6 +526,25 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 
 ---
 
+# 응답 화면
+<img width="408" height="362" alt="Image" src="https://github.com/user-attachments/assets/b96d4f76-1bb8-4d92-b7b1-d928fe4dca1c" />
+
+<img width="381" height="137" alt="Image" src="https://github.com/user-attachments/assets/b20f77a0-32d1-4287-8f41-307b8f93b2d0" />
+
+<img width="404" height="210" alt="Image" src="https://github.com/user-attachments/assets/aa3ce39d-221d-4e92-a7f0-9f2e25c85b2b" />
+
+<img width="398" height="197" alt="Image" src="https://github.com/user-attachments/assets/6d3bf4cb-ab74-4c31-bc12-239e34ec7269" />
+
+
+## tool 콜링 화면 
+<img width="483" height="205" alt="Image" src="https://github.com/user-attachments/assets/16b6e7be-8de5-4fe4-bc71-4876278cc69a" />
+
+<img width="430" height="173" alt="Image" src="https://github.com/user-attachments/assets/1cda0c29-eea1-4f6b-b95d-ad107a894668" />
+
+<img width="359" height="329" alt="Image" src="https://github.com/user-attachments/assets/82c2fa5f-d94a-465e-87ff-5cafd16e6539" />
+
+---
+
 # 추후 개선점
 
 - **청크 길이**: 지금 단계에서는 청크를 합치지 않고 두고, 검색/답 품질을 보면서 필요해지면 그때 합치는 쪽이 부담이 적다. 개선 시에는 “최소 길이(토큰/문자) 미만이면 다음 청크와 합치기” 같은 규칙을 도입하는 방안을 고려할 수 있다.
