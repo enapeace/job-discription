@@ -1,7 +1,8 @@
 .history/
 
 .env
-.data/
+# 데이터 폴더 안에 있는 모든 파일 무시
+.data/*
 
 # 대용량 데이터 (GitHub 100MB 제한)
 data/embedding/
