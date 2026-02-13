@@ -1,11 +1,19 @@
-# ETL 파이프라인 계획
-
-> **데이터 소스**: `data/crawling/jobs_YYYYMMDD_HHMM.json`  
-> **출력**: `data/cleaning/cleaning_YYYYMMDD_HHMM.json` → `data/chunking/chunking_YYYYMMDD_HHMM.json`
-
----
 
 ## 기획
+
+### 목표
+
+점프잇(사람인) 채용 공고를 수집·정제·청킹·임베딩해 PostgreSQL(pgvector)에 적재하고, 사용자 질의에 대해 **RAG + Tool calling**으로 답변하는 파이프라인.
+
+- **데이터**: 크롤링 → cleaning → nomalizing → chunking(상위·하위 유지) → embedding
+- **저장**: jobs / chunks 테이블 (pgvector HNSW 인덱스)
+- **서비스**: 질의 임베딩 → 벡터 검색 top_k → LLM(gpt-4o-mini)에 컨텍스트 + 필요 시 툴(get_job_detail, get_jobs_title_link, get_job_descriptions) 호출 → 한국어 답변
+
+### 실행 요약
+
+- **ETL**: 크롤링 → cleaning → nomalizing → chunking → embedding → load (각 단계 스크립트 실행)
+- **질의**: `uv run src/generation/ask.py` — 터미널에서 질문 입력 후 답변·사용 툴·검색 청크 로그 확인
+
 
 ### 프로젝트 구조
 
@@ -38,20 +46,6 @@ job-discription/
 ├── requirements.txt
 └── .env
 ```
-
-### 목표
-
-점프잇(사람인) 채용 공고를 수집·정제·청킹·임베딩해 PostgreSQL(pgvector)에 적재하고, 사용자 질의에 대해 **RAG + Tool calling**으로 답변하는 파이프라인.
-
-- **데이터**: 크롤링 → cleaning → nomalizing → chunking(상위·하위 유지) → embedding
-- **저장**: jobs / chunks 테이블 (pgvector HNSW 인덱스)
-- **서비스**: 질의 임베딩 → 벡터 검색 top_k → LLM(gpt-4o-mini)에 컨텍스트 + 필요 시 툴(get_job_detail, get_jobs_title_link, get_job_descriptions) 호출 → 한국어 답변
-
-### 실행 요약
-
-- **ETL**: 크롤링 → cleaning → nomalizing → chunking → embedding → load (각 단계 스크립트 실행)
-- **질의**: `uv run src/generation/ask.py` — 터미널에서 질문 입력 후 답변·사용 툴·검색 청크 로그 확인
-
 ---
 
 # 1. RAW INPUT (크롤링 데이터)
