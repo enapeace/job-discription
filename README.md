@@ -7,7 +7,7 @@
 
 - **데이터**: 크롤링 → cleaning → nomalizing → chunking(상위·하위 유지) → embedding
 - **저장**: jobs / chunks 테이블 (pgvector HNSW 인덱스)
-- **서비스**: 질의 임베딩 → 벡터 검색 top_k → LLM(gpt-4o-mini)에 컨텍스트 + 필요 시 툴(get_job_detail, get_jobs_title_link, get_job_descriptions) 호출 → 한국어 답변
+- **서비스**: 질의 재작성 → 벡터 검색 top_k → 청크 평가(관련성 필터링) → LLM(gpt-4o-mini)에 컨텍스트 + 필요 시 툴(get_company_info, get_jobs_title_link, get_job_descriptions) 호출 → 한국어 답변
 
 ### 실행 요약
 
@@ -492,11 +492,20 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 
 ## 7.1 흐름
 
-1. **검색(Retriever)**  
-   사용자 질의 → 쿼리 임베딩(`text-embedding-3-small`) → chunks 테이블 코사인 유사도 벡터 검색 → **top_k(기본 10)개 청크** 반환.
-2. **컨텍스트 구성**  
-   검색된 청크(공고ID, 제목, 청크 타입, chunk_text, 유사도)를 문자열로 이어 붙여 LLM 유저 메시지에 포함.
-3. **LLM 호출**  
+1. **질의 재작성**  
+   사용자 질의 → 채용 공고 검색에 적합한 핵심 키워드로 재작성 (인사말, 개인 정보 등 노이즈 제거)
+
+2. **벡터 검색(Retriever)**  
+   재작성된 질의 → 쿼리 임베딩(`text-embedding-3-small`) → chunks 테이블 코사인 유사도 벡터 검색 → **top_k(기본 10)개 청크** 반환.
+
+3. **청크 평가 및 필터링**  
+   각 청크가 질문과 관련 있는지 LLM으로 평가 (YES/NO) → 관련 있는 청크만 선택  
+   - 모든 청크가 NO로 판별되면 Fallback: 유사도 상위 3개 청크 사용
+
+4. **컨텍스트 구성**  
+   필터링된 청크(공고ID, 제목, 청크 타입, chunk_text)를 컨텍스트로 구성
+
+5. **LLM 호출**  
    OpenAI `gpt-4o-mini` + Tool calling. 필요 시 툴 호출 후 결과를 컨텍스트에 추가해 재호출.
 
 ## 7.2 모델
@@ -511,9 +520,9 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 
 | 툴 이름 | 용도 | 반환 |
 |---------|------|------|
-| **get_job_detail** | 특정 공고의 상세 정보(회사, 복지, 채용 절차, 경력, 근무지 등)가 필요할 때 | `job_post_id`, `post_title`, `job_post_url`, `company`, `requirements`, `job_description`, `hiring_process`, `experience_*`, `location_*` 등 |
+| **get_company_info** | 특정 공고의 회사 정보(복지, 직원 수, 연봉, 매출액, 영업이익 등)가 필요할 때 | `job_post_id`, `post_title`, `company` (회사명, 직원 수, 평균 연봉, 매출액, 영업이익, 복지 및 혜택, 회사 태그 등) |
 | **get_jobs_title_link** | 추천 공고를 제목·링크로 정리해 보여줄 때 | `job_post_id` 목록에 대한 `post_title`, `job_post_url` 목록 |
-| **get_job_descriptions** | 직무·업무·역할·담당업무 관련 질문에 답할 때 | 검색된 청크 공고 n개(기본 5, 최대 10)의 `job_description`(직무소개) |
+| **get_job_descriptions** | 직무·업무·역할·담당업무 관련 질문에 답할 때 | 검색된 청크 공고 n개(기본 3, 최대 10)의 `post_title`, `job_post_url`, `job_description`(직무소개) |
 
 - LLM이 판단해 위 툴을 호출하며, 툴 결과를 참고해 최종 답변 생성.
 - 실행: `uv run src/generation/ask.py` — 터미널에서 질의 입력 후 RAG 답변·툴 호출 로그 확인 가능.
@@ -551,6 +560,3 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 
 - **normalizing**: 연봉, 매출액 등은 int로 넣어서 데이터 분석할 수 있게씀
 
-- **retrieval**: evaluate 기능
-- get_job_detail tool콜링 - 재무 정보 보완하도록
-- ??
