@@ -31,9 +31,11 @@ JD_FIELD_TO_KEY = {
 
 
 def _strip_bullet(line: str) -> str:
-    """줄 앞의 불릿 기호(-, ■, ·), 숫자괄호(1), 2))와 공백 제거"""
-    line = re.sub(r"^[\-■·]\s*", "", line)
+    """줄 앞의 불릿 기호(-, ■, ·, •, ㆍ), 숫자괄호(1), 2))와 공백 제거. 문장 중간의 '• ', 'ㆍ ' 도 제거."""
+    line = re.sub(r"^[\-■·•ㆍ]\s*", "", line)
     line = re.sub(r"^\d+\)\s*", "", line)
+    line = re.sub(r"[•ㆍ]\s+", " ", line)  # 불릿+공백(목록 기호)만 제거. 글자•글자 형태는 유지
+    line = re.sub(r" +", " ", line)  # 연속 공백 하나로
     return line.strip()
 
 
@@ -53,10 +55,10 @@ def _is_upper(line: str) -> bool:
 
 
 def _is_lower(line: str, under_numbered: bool) -> bool:
-    """하위 여부. under_numbered면 - 가 하위, 아니면 · 만 하위."""
+    """하위 여부. under_numbered면 - 가 하위, 아니면 ·/•/ㆍ 가 하위."""
     if under_numbered:
         return bool(re.match(r"^\-", line))
-    return bool(re.match(r"^·", line))
+    return bool(re.match(r"^[·•ㆍ]", line))
 
 
 def _parse_hierarchy(text: str) -> list[tuple[str, list[str]]]:
@@ -105,10 +107,13 @@ def _parse_hierarchy(text: str) -> list[tuple[str, list[str]]]:
                     groups.append((sub, []))
 
         else:
+            cleaned = _strip_bullet(line)
+            if not cleaned:
+                continue
             if current_upper is None:
-                groups.append((line, []))
+                groups.append((cleaned, []))
             else:
-                current_lowers.append(line)
+                current_lowers.append(cleaned)
 
     if current_upper is not None:
         groups.append((current_upper, current_lowers))
@@ -185,21 +190,22 @@ def chunk_job(job: dict) -> Iterator[dict]:
         chunk_idx += 1
         return record
 
+    chunks: list[dict] = []
     # 1. 기술스택
     for text in _chunk_skills(jd.get("기술스택", "")):
-        yield _make("skills", text)
-
+        chunks.append(_make("skills", text))
     # 2. 주요업무
     for text in _chunk_hierarchical(jd.get("주요업무", ""), "main_tasks"):
-        yield _make("main_tasks", text)
-
+        chunks.append(_make("main_tasks", text))
     # 3. 자격요건
     for text in _chunk_hierarchical(jd.get("자격요건", ""), "requirements"):
-        yield _make("requirements", text)
-
+        chunks.append(_make("requirements", text))
     # 4. 우대사항
     for text in _chunk_hierarchical(jd.get("우대사항", ""), "preferred"):
-        yield _make("preferred", text)
+        chunks.append(_make("preferred", text))
+
+    for record in chunks:
+        yield record
 
 
 def run(
@@ -224,6 +230,8 @@ def run(
         jobs = json.load(f)
 
     chunks = [chunk for job in jobs for chunk in chunk_job(job)]
+    for i, rec in enumerate(chunks, start=1):
+        rec["chunk_no"] = i  # 전체 청킹 데이터에서의 순번 (몇 건인지 확인용)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     output_path = output_dir / f"chunking_{timestamp}.json"
