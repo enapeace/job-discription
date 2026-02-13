@@ -27,10 +27,6 @@ def vector_search(
 ) -> list[dict]:
     """
     코사인 유사도 벡터 검색 → top_k 청크 반환
-
-    Returns:
-        [{"chunk_id", "chunk_type", "chunk_text", "job_post_id", "job_category",
-          "post_title", "job_post_url", "score"}, ...]
     """
     sql = """
         SELECT chunk_id, chunk_type, chunk_text,
