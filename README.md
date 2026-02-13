@@ -546,3 +546,11 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 - **LnagGraph**: “검색 → 요약 → 검증 → 재검색” 같은 다단계·분기·루프가 생기면 그때 LangGraph로 구현
 
 - **Tool**: RDB 조회 기능 추가
+
+- **chunking**: 2천자 넘어가는 경우 폴백처리
+
+- **normalizing**: 연봉, 매출액 등은 int로 넣어서 데이터 분석할 수 있게씀
+
+- **retrieval**: evaluate 기능
+- get_job_detail tool콜링 - 재무 정보 보완하도록
+- ??
