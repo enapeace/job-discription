@@ -559,4 +559,7 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 - **chunking**: 2천자 넘어가는 경우 폴백처리
 
 - **normalizing**: 연봉, 매출액 등은 int로 넣어서 데이터 분석할 수 있게씀
+- **@tool**: from langchain.tools import tool 사용해서 tool 코드 간소화 + langchain의 에이전트 기능 사용해서 만들어보기
+ 
+
 
