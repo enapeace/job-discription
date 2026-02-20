@@ -561,4 +561,8 @@ data/embedding/embedding_*.jsonl (1줄 = 레코드 1개, embedding 필드 포함
 - **@tool**: from langchain.tools import tool 사용해서 tool 코드 간소화 + langchain의 에이전트 기능 사용해서 만들어보기
  
 
-
+# 실행 명령
+```python
+source .venv/bin/activate 
+uv run src/generation/ask.py
+```
